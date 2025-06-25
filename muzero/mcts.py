@@ -49,6 +49,7 @@ def backpropagate(search_path, value, discount):
 
 
 def run_mcts(network, root_observation, action_space, num_simulations=50, discount=0.997):
+    device = root_observation.device
     root = TreeNode(1.0)
     latent = network.initial_inference(root_observation)
     expand_node(root, latent, action_space)
@@ -60,7 +61,7 @@ def run_mcts(network, root_observation, action_space, num_simulations=50, discou
         search_path = [node]
         while node.expanded():
             action, node = select_child(node)
-            action_one_hot = torch.zeros(1, action_space)
+            action_one_hot = torch.zeros(1, action_space, device=device)
             action_one_hot[0, action] = 1.0
             latent_state, value, reward, policy_logits = network.recurrent_inference(latent_state, action_one_hot)
             node.reward = reward.item()
