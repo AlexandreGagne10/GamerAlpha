@@ -10,6 +10,13 @@ Install the required dependencies using `pip`:
 pip install -r requirements.txt
 ```
 
+To view environments that render graphics you need the optional pygame
+dependency. Install it via gym's `classic_control` extra:
+
+```bash
+pip install "gym[classic_control]"   # adds pygame for rendering
+```
+
 ## Usage
 
 Run the training script with the desired environment name. The script supports
