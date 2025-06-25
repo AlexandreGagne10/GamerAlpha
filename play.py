@@ -14,7 +14,13 @@ def load_model(path: str, network: MuZeroNetwork, device: torch.device) -> None:
 
 
 def play(env_name: str, model_path: str, episodes: int, simulations: int, device: torch.device) -> None:
-    env = gym.make(env_name, render_mode="human")
+    try:
+        env = gym.make(env_name, render_mode="human")
+    except gym.error.DependencyNotInstalled:
+        print(
+            "Pygame is required for rendering. Install it with 'pip install \"gym[classic_control]\"'."
+        )
+        return
     observation_shape = env.observation_space.shape
     action_space = env.action_space.n
 
