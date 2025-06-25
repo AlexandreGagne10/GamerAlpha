@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import logging
+from pathlib import Path
+
 import gym
 import torch
 import torch.nn as nn
@@ -12,6 +15,66 @@ from muzero.model import MuZeroNetwork
 from muzero.mcts import run_mcts
 from muzero.replay_buffer import ReplayBuffer
 from muzero.game_history import GameHistory
+
+
+def save_checkpoint(
+    network: MuZeroNetwork,
+    optimizer: optim.Optimizer,
+    episode: int,
+    path: Path,
+) -> None:
+    """Save model and optimizer state."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "episode": episode,
+            "model_state": network.state_dict(),
+            "optim_state": optimizer.state_dict(),
+        },
+        path,
+    )
+
+
+def load_checkpoint(
+    network: MuZeroNetwork,
+    optimizer: optim.Optimizer,
+    path: Path,
+) -> int:
+    """Load model and optimizer state. Returns the episode to resume from."""
+
+    checkpoint = torch.load(path, map_location="cpu")
+    network.load_state_dict(checkpoint["model_state"])
+    optimizer.load_state_dict(checkpoint["optim_state"])
+    return int(checkpoint.get("episode", 0))
+
+
+def evaluate(
+    env: gym.Env,
+    network: MuZeroNetwork,
+    episodes: int,
+    action_space: int,
+    num_simulations: int,
+    device: torch.device,
+) -> float:
+    """Run evaluation episodes and return the average reward."""
+
+    total_reward = 0.0
+    for _ in range(episodes):
+        observation, _ = env.reset()
+        done = False
+        episode_reward = 0.0
+        while not done:
+            obs_tensor = torch.tensor(
+                observation, dtype=torch.float, device=device
+            ).unsqueeze(0)
+            root = run_mcts(network, obs_tensor, action_space, num_simulations)
+            action, _ = select_action(root)
+            observation, reward, done, trunc, _ = env.step(action)
+            done = done or trunc
+            episode_reward += reward
+        total_reward += episode_reward
+    return total_reward / episodes
 
 
 def select_action(root: "TreeNode") -> tuple[int, list[float]]:
@@ -42,8 +105,14 @@ def update_weights(
     action_space: int,
     device: torch.device,
     discount: float = 0.997,
-) -> None:
-    """Update network weights from a batch of game histories."""
+) -> tuple[float, float, float, float]:
+    """Update network weights from a batch of game histories.
+
+    Returns
+    -------
+    tuple[float, float, float, float]
+        Value loss, reward loss, policy loss and total loss.
+    """
 
     obs_batch = []
     targets_value = []
@@ -71,6 +140,13 @@ def update_weights(
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+
+    return (
+        value_loss.item(),
+        reward_loss.item(),
+        policy_loss.item(),
+        loss.item(),
+    )
 
 
 def play_game(
@@ -103,12 +179,22 @@ def main() -> None:
     parser.add_argument('--env', type=str, default='CartPole-v1')
     parser.add_argument('--episodes', type=int, default=1)
     parser.add_argument('--simulations', type=int, default=10)
+    parser.add_argument('--checkpoint', type=str, default='checkpoint.pth',
+                        help='Path to save/load training checkpoint')
+    parser.add_argument('--eval-interval', type=int, default=0,
+                        help='Run evaluation every N episodes')
+    parser.add_argument('--eval-episodes', type=int, default=1,
+                        help='Number of evaluation episodes')
     parser.add_argument('--device', type=str, default='cpu',
                         choices=['cpu', 'cuda'],
                         help='Device to run the model on')
     args = parser.parse_args()
 
-    device = torch.device(args.device if torch.cuda.is_available() or args.device == 'cpu' else 'cpu')
+    logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
+
+    device = torch.device(
+        args.device if torch.cuda.is_available() or args.device == 'cpu' else 'cpu'
+    )
 
     env = gym.make(args.env)
     observation_shape = env.observation_space.shape
@@ -116,15 +202,45 @@ def main() -> None:
 
     network = MuZeroNetwork(observation_shape, action_space).to(device)
     optimizer = optim.Adam(network.parameters(), lr=1e-3)
+
+    start_episode = 0
+    checkpoint_path = Path(args.checkpoint)
+    if checkpoint_path.exists():
+        start_episode = load_checkpoint(network, optimizer, checkpoint_path)
+        logging.info("Loaded checkpoint from %s (episode %d)", checkpoint_path, start_episode)
+
     buffer = ReplayBuffer(100)
 
-    for episode in range(args.episodes):
+    for episode in range(start_episode, args.episodes):
         game = play_game(env, network, action_space, args.simulations, device)
         buffer.add_game(game)
         if len(buffer) >= 1:
             batch = buffer.sample(1)
-            update_weights(network, optimizer, batch, action_space, device)
-        print(f'Episode {episode+1} finished with {len(game.rewards)} steps')
+            v_loss, r_loss, p_loss, loss = update_weights(
+                network, optimizer, batch, action_space, device
+            )
+            logging.info(
+                "Episode %d training loss v=%.4f r=%.4f p=%.4f total=%.4f",
+                episode + 1,
+                v_loss,
+                r_loss,
+                p_loss,
+                loss,
+            )
+        logging.info("Episode %d finished with %d steps", episode + 1, len(game.rewards))
+
+        if args.eval_interval and (episode + 1) % args.eval_interval == 0:
+            avg_reward = evaluate(
+                env,
+                network,
+                args.eval_episodes,
+                action_space,
+                args.simulations,
+                device,
+            )
+            logging.info("Evaluation reward after episode %d: %.2f", episode + 1, avg_reward)
+
+        save_checkpoint(network, optimizer, episode + 1, checkpoint_path)
 
 
 if __name__ == '__main__':
