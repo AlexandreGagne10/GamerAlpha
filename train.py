@@ -56,6 +56,8 @@ def evaluate(
     action_space: int,
     num_simulations: int,
     device: torch.device,
+    dirichlet_alpha: float | None = None,
+    exploration_fraction: float = 0.25,
 ) -> float:
     """Run evaluation episodes and return the average reward."""
 
@@ -68,7 +70,14 @@ def evaluate(
             obs_tensor = torch.tensor(
                 observation, dtype=torch.float, device=device
             ).unsqueeze(0)
-            root = run_mcts(network, obs_tensor, action_space, num_simulations)
+            root = run_mcts(
+                network,
+                obs_tensor,
+                action_space,
+                num_simulations,
+                dirichlet_alpha=dirichlet_alpha,
+                exploration_fraction=exploration_fraction,
+            )
             action, _ = select_action(root)
             observation, reward, done, trunc, _ = env.step(action)
             done = done or trunc
@@ -154,6 +163,8 @@ def play_game(
     network: MuZeroNetwork,
     action_space: int,
     num_simulations: int,
+    dirichlet_alpha: float | None,
+    exploration_fraction: float,
     device: torch.device,
 ) -> GameHistory:
     """Play one game in the environment using MCTS for action selection."""
@@ -163,7 +174,14 @@ def play_game(
     history = GameHistory()
     while not done:
         obs_tensor = torch.tensor(observation, dtype=torch.float, device=device).unsqueeze(0)
-        root = run_mcts(network, obs_tensor, action_space, num_simulations)
+        root = run_mcts(
+            network,
+            obs_tensor,
+            action_space,
+            num_simulations,
+            dirichlet_alpha=dirichlet_alpha,
+            exploration_fraction=exploration_fraction,
+        )
         action, policy = select_action(root)
         history.store_search_statistics(root)
         next_observation, reward, done, trunc, info = env.step(action)
@@ -190,6 +208,10 @@ def main() -> None:
     parser.add_argument('--device', type=str, default='cpu',
                         choices=['cpu', 'cuda'],
                         help='Device to run the model on')
+    parser.add_argument('--dirichlet-alpha', type=float, default=0.3,
+                        help='Dirichlet alpha for root exploration noise')
+    parser.add_argument('--exploration-fraction', type=float, default=0.25,
+                        help='Fraction of Dirichlet noise to add to root prior')
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
@@ -218,7 +240,15 @@ def main() -> None:
         no_improve = 0
 
         for episode in range(start_episode, args.episodes):
-            game = play_game(env, network, action_space, args.simulations, device)
+            game = play_game(
+                env,
+                network,
+                action_space,
+                args.simulations,
+                args.dirichlet_alpha,
+                args.exploration_fraction,
+                device,
+            )
             buffer.add_game(game)
             if len(buffer) >= 1:
                 batch = buffer.sample(1)
@@ -243,6 +273,8 @@ def main() -> None:
                     action_space,
                     args.simulations,
                     device,
+                    dirichlet_alpha=None,
+                    exploration_fraction=args.exploration_fraction,
                 )
                 logging.info("Evaluation reward after episode %d: %.2f", episode + 1, avg_reward)
                 if avg_reward > best_reward:
