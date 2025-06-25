@@ -1,8 +1,7 @@
 # TODO
 
 ## Immediate Fixes
-- Replace the `policy_loss` calculation in `train.py` to use the MCTS policy
-  distribution (`targets_policy`) rather than just the chosen action.
+- ~~Replace the `policy_loss` calculation in `train.py` to use the MCTS policy distribution (`targets_policy`) rather than just the chosen action.~~ Implemented.
 - Add docstrings and type hints to all public functions and classes
   (`train.py` and files under `muzero/`).
 - Update tests in `tests/` so that they use the new `select_action` implementation
