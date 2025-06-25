@@ -1,15 +1,23 @@
+"""Training loop for a minimal MuZero implementation."""
+
+from __future__ import annotations
+
 import argparse
 import gym
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from typing import List, Tuple
+
 from muzero.model import MuZeroNetwork
 from muzero.mcts import run_mcts
 from muzero.replay_buffer import ReplayBuffer
 from muzero.game_history import GameHistory
 
 
-def select_action(root):
+def select_action(root) -> Tuple[int, List[float]]:
+    """Choose an action from the root node's visit counts."""
+
     visit_counts = [child.visit_count for child in root.children.values()]
     actions = list(root.children.keys())
     probs = torch.tensor(visit_counts, dtype=torch.float)
@@ -18,7 +26,15 @@ def select_action(root):
     return action, probs.tolist()
 
 
-def update_weights(network, optimizer, batch, action_space, discount=0.997):
+def update_weights(
+    network: MuZeroNetwork,
+    optimizer: optim.Optimizer,
+    batch: List[GameHistory],
+    action_space: int,
+    discount: float = 0.997,
+) -> None:
+    """Perform a single network update from a batch of games."""
+
     obs_batch = []
     actions_batch = []
     targets_value = []
@@ -49,7 +65,14 @@ def update_weights(network, optimizer, batch, action_space, discount=0.997):
     optimizer.step()
 
 
-def play_game(env, network, action_space, num_simulations):
+def play_game(
+    env: gym.Env,
+    network: MuZeroNetwork,
+    action_space: int,
+    num_simulations: int,
+) -> GameHistory:
+    """Run one episode using MCTS to select actions."""
+
     observation, _ = env.reset()
     done = False
     history = GameHistory()
@@ -64,7 +87,8 @@ def play_game(env, network, action_space, num_simulations):
     return history
 
 
-def main():
+def main() -> None:
+    """Entry point for command-line execution."""
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='CartPole-v1')
     parser.add_argument('--episodes', type=int, default=1)
