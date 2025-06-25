@@ -199,62 +199,65 @@ def main() -> None:
     )
 
     env = gym.make(args.env)
-    observation_shape = env.observation_space.shape
-    action_space = env.action_space.n
+    try:
+        observation_shape = env.observation_space.shape
+        action_space = env.action_space.n
 
-    network = MuZeroNetwork(observation_shape, action_space).to(device)
-    optimizer = optim.Adam(network.parameters(), lr=1e-3)
+        network = MuZeroNetwork(observation_shape, action_space).to(device)
+        optimizer = optim.Adam(network.parameters(), lr=1e-3)
 
-    start_episode = 0
-    checkpoint_path = Path(args.checkpoint)
-    if checkpoint_path.exists():
-        start_episode = load_checkpoint(network, optimizer, checkpoint_path)
-        logging.info("Loaded checkpoint from %s (episode %d)", checkpoint_path, start_episode)
+        start_episode = 0
+        checkpoint_path = Path(args.checkpoint)
+        if checkpoint_path.exists():
+            start_episode = load_checkpoint(network, optimizer, checkpoint_path)
+            logging.info("Loaded checkpoint from %s (episode %d)", checkpoint_path, start_episode)
 
-    buffer = ReplayBuffer(100)
+        buffer = ReplayBuffer(100)
 
-    best_reward = float('-inf')
-    no_improve = 0
+        best_reward = float('-inf')
+        no_improve = 0
 
-    for episode in range(start_episode, args.episodes):
-        game = play_game(env, network, action_space, args.simulations, device)
-        buffer.add_game(game)
-        if len(buffer) >= 1:
-            batch = buffer.sample(1)
-            v_loss, r_loss, p_loss, loss = update_weights(
-                network, optimizer, batch, action_space, device
-            )
-            logging.info(
-                "Episode %d training loss v=%.4f r=%.4f p=%.4f total=%.4f",
-                episode + 1,
-                v_loss,
-                r_loss,
-                p_loss,
-                loss,
-            )
-        logging.info("Episode %d finished with %d steps", episode + 1, len(game.rewards))
+        for episode in range(start_episode, args.episodes):
+            game = play_game(env, network, action_space, args.simulations, device)
+            buffer.add_game(game)
+            if len(buffer) >= 1:
+                batch = buffer.sample(1)
+                v_loss, r_loss, p_loss, loss = update_weights(
+                    network, optimizer, batch, action_space, device
+                )
+                logging.info(
+                    "Episode %d training loss v=%.4f r=%.4f p=%.4f total=%.4f",
+                    episode + 1,
+                    v_loss,
+                    r_loss,
+                    p_loss,
+                    loss,
+                )
+            logging.info("Episode %d finished with %d steps", episode + 1, len(game.rewards))
 
-        if args.eval_interval and (episode + 1) % args.eval_interval == 0:
-            avg_reward = evaluate(
-                env,
-                network,
-                args.eval_episodes,
-                action_space,
-                args.simulations,
-                device,
-            )
-            logging.info("Evaluation reward after episode %d: %.2f", episode + 1, avg_reward)
-            if avg_reward > best_reward:
-                best_reward = avg_reward
-                no_improve = 0
-            else:
-                no_improve += 1
-            if args.early_stop and no_improve >= args.early_stop:
-                logging.info("Early stopping at episode %d", episode + 1)
-                save_checkpoint(network, optimizer, episode + 1, checkpoint_path)
-                return
+            if args.eval_interval and (episode + 1) % args.eval_interval == 0:
+                avg_reward = evaluate(
+                    env,
+                    network,
+                    args.eval_episodes,
+                    action_space,
+                    args.simulations,
+                    device,
+                )
+                logging.info("Evaluation reward after episode %d: %.2f", episode + 1, avg_reward)
+                if avg_reward > best_reward:
+                    best_reward = avg_reward
+                    no_improve = 0
+                else:
+                    no_improve += 1
+                if args.early_stop and no_improve >= args.early_stop:
+                    logging.info("Early stopping at episode %d", episode + 1)
+                    save_checkpoint(network, optimizer, episode + 1, checkpoint_path)
+                    return
 
-        save_checkpoint(network, optimizer, episode + 1, checkpoint_path)
+            save_checkpoint(network, optimizer, episode + 1, checkpoint_path)
+    finally:
+        env.close()
 
 
 if __name__ == '__main__':
