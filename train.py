@@ -10,6 +10,7 @@ import gym
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 
 from muzero.model import MuZeroNetwork
 from muzero.mcts import run_mcts
@@ -117,6 +118,22 @@ def update_weights(
 ) -> tuple[float, float, float, float]:
     """Update network weights from a batch of game histories.
 
+    Parameters
+    ----------
+    network : MuZeroNetwork
+        The network to update.
+    optimizer : optim.Optimizer
+        Optimizer used for the update.
+    batch : list[GameHistory]
+        Batch of game histories sampled from the replay buffer.
+    action_space : int
+        Number of discrete actions in the environment. (Unused but kept for
+        API compatibility.)
+    device : torch.device
+        Device to place tensors on.
+    discount : float, optional
+        Discount factor used for value backpropagation, by default ``0.997``.
+
     Returns
     -------
     tuple[float, float, float, float]
@@ -134,10 +151,10 @@ def update_weights(
             targets_policy.append(game.policies[i])
             targets_reward.append(game.rewards[i])
 
-    obs_batch = torch.tensor(obs_batch, dtype=torch.float, device=device)
-    targets_value = torch.tensor(targets_value, dtype=torch.float, device=device).unsqueeze(1)
-    targets_reward = torch.tensor(targets_reward, dtype=torch.float, device=device).unsqueeze(1)
-    targets_policy = torch.tensor(targets_policy, dtype=torch.float, device=device)
+    obs_batch = torch.as_tensor(np.array(obs_batch), dtype=torch.float, device=device)
+    targets_value = torch.as_tensor(np.array(targets_value), dtype=torch.float, device=device).unsqueeze(1)
+    targets_reward = torch.as_tensor(np.array(targets_reward), dtype=torch.float, device=device).unsqueeze(1)
+    targets_policy = torch.as_tensor(np.array(targets_policy), dtype=torch.float, device=device)
 
     latent, value, reward, policy_logits = network.initial_inference(obs_batch)
     value_loss = nn.functional.mse_loss(value, targets_value)
@@ -167,7 +184,30 @@ def play_game(
     exploration_fraction: float,
     device: torch.device,
 ) -> GameHistory:
-    """Play one game in the environment using MCTS for action selection."""
+    """Play one game in the environment using MCTS for action selection.
+
+    Parameters
+    ----------
+    env : gym.Env
+        The Gym environment to interact with.
+    network : MuZeroNetwork
+        Network used for MCTS evaluations.
+    action_space : int
+        Number of discrete actions.
+    num_simulations : int
+        Number of MCTS simulations per move.
+    dirichlet_alpha : float | None
+        Dirichlet noise parameter for root exploration. ``None`` disables noise.
+    exploration_fraction : float
+        Fraction of Dirichlet noise mixed into the root prior.
+    device : torch.device
+        Device on which to run the network.
+
+    Returns
+    -------
+    GameHistory
+        History of the played game containing observations and targets.
+    """
 
     observation, _ = env.reset()
     done = False
