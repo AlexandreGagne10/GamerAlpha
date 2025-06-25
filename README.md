@@ -20,6 +20,15 @@ python train.py --env CartPole-v1 --episodes 10 --simulations 50 \
     --checkpoint checkpoint.pth --eval-interval 5 --eval-episodes 2
 ```
 
+Add `--early-stop N` to stop training if the evaluation reward does not improve
+for `N` evaluation runs.
+
+To watch a trained model play, run `play.py` with your checkpoint:
+
+```bash
+python play.py --env CartPole-v1 --model checkpoint.pth --episodes 3
+```
+
 Use `--checkpoint` to resume training from a previous run. Set `--eval-interval`
 to periodically evaluate the agent during training.
 

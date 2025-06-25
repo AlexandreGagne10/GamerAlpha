@@ -185,6 +185,8 @@ def main() -> None:
                         help='Run evaluation every N episodes')
     parser.add_argument('--eval-episodes', type=int, default=1,
                         help='Number of evaluation episodes')
+    parser.add_argument('--early-stop', type=int, default=0,
+                        help='Stop if no improvement after this many evaluations')
     parser.add_argument('--device', type=str, default='cpu',
                         choices=['cpu', 'cuda'],
                         help='Device to run the model on')
@@ -210,6 +212,9 @@ def main() -> None:
         logging.info("Loaded checkpoint from %s (episode %d)", checkpoint_path, start_episode)
 
     buffer = ReplayBuffer(100)
+
+    best_reward = float('-inf')
+    no_improve = 0
 
     for episode in range(start_episode, args.episodes):
         game = play_game(env, network, action_space, args.simulations, device)
@@ -239,6 +244,15 @@ def main() -> None:
                 device,
             )
             logging.info("Evaluation reward after episode %d: %.2f", episode + 1, avg_reward)
+            if avg_reward > best_reward:
+                best_reward = avg_reward
+                no_improve = 0
+            else:
+                no_improve += 1
+            if args.early_stop and no_improve >= args.early_stop:
+                logging.info("Early stopping at episode %d", episode + 1)
+                save_checkpoint(network, optimizer, episode + 1, checkpoint_path)
+                return
 
         save_checkpoint(network, optimizer, episode + 1, checkpoint_path)
 
