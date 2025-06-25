@@ -13,7 +13,7 @@
 ## Future Improvements
 - Implement a more sophisticated MuZero replay buffer with priority sampling and
   support for larger datasets.
-- Add support for saving/loading model checkpoints during training.
+- ~~Add support for saving/loading model checkpoints during training.~~ Implemented.
 - Expand the test suite to cover the full training loop and edge cases.
 - Improve command line interface with more configuration options (learning rate,
   discount factor, network size, etc.).
