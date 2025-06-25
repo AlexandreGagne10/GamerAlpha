@@ -62,13 +62,47 @@ def backpropagate(search_path: list[TreeNode], value: float, discount: float) ->
         value = node.reward + discount * value
 
 
-def run_mcts(network: MuZeroNetwork, root_observation: torch.Tensor, action_space: int, num_simulations: int = 50, discount: float = 0.997) -> TreeNode:
-    """Run Monte Carlo Tree Search starting from the given observation."""
+def run_mcts(
+    network: MuZeroNetwork,
+    root_observation: torch.Tensor,
+    action_space: int,
+    num_simulations: int = 50,
+    discount: float = 0.997,
+    dirichlet_alpha: float | None = None,
+    exploration_fraction: float = 0.25,
+) -> TreeNode:
+    """Run Monte Carlo Tree Search starting from the given observation.
+
+    Parameters
+    ----------
+    network : MuZeroNetwork
+        The network used for inference.
+    root_observation : torch.Tensor
+        Observation tensor for the root state.
+    action_space : int
+        Number of discrete actions.
+    num_simulations : int, optional
+        Number of MCTS simulations to run, by default 50.
+    discount : float, optional
+        Discount factor for value backpropagation, by default 0.997.
+    dirichlet_alpha : float | None, optional
+        If set, add Dirichlet noise with this alpha to the root prior to
+        encourage exploration. ``None`` disables noise.
+    exploration_fraction : float, optional
+        Fraction of noise mixed into the root prior, by default 0.25.
+    """
 
     device = root_observation.device
     root = TreeNode(1.0)
     latent = network.initial_inference(root_observation)
     expand_node(root, latent, action_space)
+    if dirichlet_alpha is not None:
+        noise = np.random.dirichlet([dirichlet_alpha] * action_space)
+        for a, child in root.children.items():
+            child.prior = (
+                child.prior * (1 - exploration_fraction)
+                + noise[a] * exploration_fraction
+            )
     root.reward = latent[2].item()
 
     for _ in range(num_simulations):
