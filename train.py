@@ -11,7 +11,6 @@ from muzero.game_history import GameHistory
 
 def select_action(root):
     visit_counts = [child.visit_count for child in root.children.values()]
-    actions = list(root.children.keys())
     probs = torch.tensor(visit_counts, dtype=torch.float)
     probs = probs / probs.sum()
     action = int(torch.multinomial(probs, num_samples=1))
