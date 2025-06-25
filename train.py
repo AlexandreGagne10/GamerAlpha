@@ -20,20 +20,17 @@ def select_action(root):
 
 def update_weights(network, optimizer, batch, action_space, discount=0.997):
     obs_batch = []
-    actions_batch = []
     targets_value = []
     targets_policy = []
     targets_reward = []
     for game in batch:
         for i in range(len(game.actions)):
             obs_batch.append(game.observations[i])
-            actions_batch.append(game.actions[i])
             targets_value.append(game.root_values[i])
             targets_policy.append(game.policies[i])
             targets_reward.append(game.rewards[i])
 
     obs_batch = torch.tensor(obs_batch, dtype=torch.float)
-    actions_batch = torch.tensor(actions_batch, dtype=torch.long)
     targets_value = torch.tensor(targets_value, dtype=torch.float).unsqueeze(1)
     targets_reward = torch.tensor(targets_reward, dtype=torch.float).unsqueeze(1)
     targets_policy = torch.tensor(targets_policy, dtype=torch.float)
@@ -41,7 +38,10 @@ def update_weights(network, optimizer, batch, action_space, discount=0.997):
     latent, value, reward, policy_logits = network.initial_inference(obs_batch)
     value_loss = nn.functional.mse_loss(value, targets_value)
     reward_loss = nn.functional.mse_loss(reward, targets_reward)
-    policy_loss = nn.functional.cross_entropy(policy_logits, actions_batch)
+    policy_loss = -(
+        targets_policy
+        * nn.functional.log_softmax(policy_logits, dim=1)
+    ).sum(dim=1).mean()
 
     loss = value_loss + reward_loss + policy_loss
     optimizer.zero_grad()
