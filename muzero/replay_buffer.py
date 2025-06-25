@@ -10,6 +10,10 @@ class ReplayBuffer:
         self.buffer.append(game_history)
 
     def sample(self, batch_size):
+        if len(self.buffer) < batch_size:
+            if len(self.buffer) == 0:
+                raise ValueError("Cannot sample from an empty buffer")
+            batch_size = len(self.buffer)
         return random.sample(self.buffer, batch_size)
 
     def __len__(self):
